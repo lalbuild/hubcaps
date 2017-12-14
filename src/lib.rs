@@ -69,7 +69,7 @@ use futures::{future, stream, Stream as StdStream, Future as StdFuture, IntoFutu
 use hyper_tls::HttpsConnector;
 use hyper::{StatusCode, Client, Method};
 use hyper::client::{Connect, HttpConnector, Request};
-use hyper::header::{qitem, Accept, Authorization, UserAgent, Link, RelationType, Location};
+use hyper::header::{qitem, Accept, Authorization, ContentType, UserAgent, Link, RelationType, Location};
 use hyper::mime::Mime;
 use serde::de::DeserializeOwned;
 use tokio_core::reactor::Handle;
@@ -333,6 +333,7 @@ where
         uri: String,
         body: Option<Vec<u8>>,
         media_type: MediaType,
+        content_type: Option<ContentType>,
     ) -> Future<(Option<Link>, Out)>
     where
         Out: DeserializeOwned + 'static,
@@ -359,6 +360,9 @@ where
                 if let Some(Credentials::Token(ref token)) = instance.credentials {
                     headers.set(Authorization(format!("token {}", token)))
                 }
+                if let Some(ctype) = content_type {
+                    headers.set(ctype)
+                }
             }
 
             if let Some(body) = body2 {
@@ -374,7 +378,7 @@ where
             if StatusCode::MovedPermanently == status || StatusCode::TemporaryRedirect == status {
                 if let Some(location) = response.headers().get::<Location>() {
                     debug!("redirect location {:?}", location);
-                    return instance2.request(method, location.to_string(), body, media_type);
+                    return instance2.request(method, location.to_string(), body, media_type, None);
                 }
             }
             let link = response.headers().get::<Link>().map(|l| l.clone());
@@ -409,7 +413,7 @@ where
     where
         D: DeserializeOwned + 'static,
     {
-        Box::new(self.request(method, uri, body, media_type).map(
+        Box::new(self.request(method, uri, body, media_type, None).map(
             |(_, entity)| {
                 entity
             },
@@ -434,7 +438,7 @@ where
     where
         D: DeserializeOwned + 'static,
     {
-        self.request(Method::Get, self.host.clone() + uri, None, MediaType::Json)
+        self.request(Method::Get, self.host.clone() + uri, None, MediaType::Json, None)
     }
 
     fn delete(&self, uri: &str) -> Future<()> {
@@ -461,6 +465,23 @@ where
             Some(message),
             MediaType::Json,
         )
+    }
+
+    fn post_type<D>(&self, uri: &str, message: Vec<u8>, ctype: ContentType) -> Future<D>
+    where
+        D: DeserializeOwned + 'static,
+    {
+        Box::new(self.request(
+            Method::Post,
+            self.host.clone() + uri,
+            Some(message),
+            MediaType::Json,
+            Some(ctype),
+        ).map(
+            |(_, entity)| {
+                entity
+            },
+        ))
     }
 
     fn patch_media<D>(&self, uri: &str, message: Vec<u8>, media: MediaType) -> Future<D>

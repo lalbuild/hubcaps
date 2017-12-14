@@ -1,6 +1,11 @@
 //! Releases interface
 extern crate serde_json;
 
+use std::fs::File;
+use std::io::Read;
+use hyper::mime::Mime;
+use hyper::header::ContentType;
+
 use futures::future;
 use hyper::client::Connect;
 
@@ -32,7 +37,16 @@ impl<C: Connect + Clone> Assets<C> {
         }
     }
 
-    // todo: upload asset
+    pub fn post(&self, name: &str, file: &mut File, mime: Mime) -> Future<Asset> {
+        let mut buffer: Vec<u8> = Vec::new();
+        file.read_to_end(&mut buffer).unwrap(); // for now
+        self.github.post_type(
+            &self.path(&format!("?name={}", name)),
+            buffer,
+            ContentType(mime)
+        )
+    }
+
     // todo: edit asset
 
     fn path(&self, more: &str) -> String {
